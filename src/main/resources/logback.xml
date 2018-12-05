@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<configuration>
+<appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <layout class="ch.qos.logback.classic.PatternLayout">
+        <pattern>%d{ISO8601} [%thread] [%-5level] [%-10X{TRACING_ID}] %logger - %msg%n</pattern>
+    </layout>
+</appender>
+<!-- 文件输出日志 (文件大小策略进行文件输出，超过指定大小对文件备份)-->
+<appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>/tmp/logs/SuperHakce.log</file>
+    <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+        <fileNamePattern>/tmp/logs/SuperHakce.log.%d{yyyy-MM-dd}.bak</fileNamePattern>
+        <maxHistory>30</maxHistory>
+    </rollingPolicy>
+    <layout class="ch.qos.logback.classic.PatternLayout">
+        <Pattern>%d{ISO8601} [%thread] [%-5level] [%-10X{TRACING_ID}] %logger - %msg%n</Pattern>
+    </layout>
+</appender>
+
+<root level="info">
+    <appender-ref ref="STDOUT"/>
+    <appender-ref ref="FILE"/>
+</root>
+</configuration>
