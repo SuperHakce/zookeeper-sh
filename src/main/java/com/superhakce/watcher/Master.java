@@ -33,10 +33,20 @@ public class Master implements Watcher{
     public void process(WatchedEvent watchedEvent){
         log.info("Master.process");
     }
+
+    public void closeZK(){
+        try{
+            this.zk.close();
+        }catch (InterruptedException e){
+            log.error("zookeeper close have error:{}", e);
+        }
+    }
+
     public static void main(String[] args) throws InterruptedException{
         BasicConfigurator.configure();
-        Master master = new Master("*.*.*.*:2181");
+        Master master = new Master("58.87.111.245:2181");
         master.startZK();
-        Thread.sleep(600000L);
+        Thread.sleep(6000000L);
+        master.closeZK();
     }
 }
