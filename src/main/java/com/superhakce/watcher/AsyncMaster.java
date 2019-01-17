@@ -23,15 +23,32 @@ import java.util.Random;
 @Slf4j
 public class AsyncMaster implements Watcher {
 
-
-    private ZooKeeper zk;
-    private String hostPort;
-    private boolean isLeader = false;
+    // 主节点名称
     private final static String MASTER_NODE = "/master";
+
+    // Zookeeper 对象
+    private ZooKeeper zk;
+
+    // Zookeeper 服务地址
+    private String hostPort;
+
+    // 该客户端是否为主节点
+    private boolean isLeader = false;
+    public boolean isLeader() {
+        return isLeader;
+    }
+
+    // 客户端唯一ID
+    private String serverId = Integer.toHexString(new Random().nextInt());
+    public String getServerId() {
+        return serverId;
+    }
+
+    // 主节点创建异步回调
     private AsyncCallback.StringCallback masterCreateCallBack = new AsyncCallback.StringCallback() {
         @Override
         public void processResult(int rc, String path, Object ctx, String name) {
-            log.info("收到异步回调，rc:{}, path:{}, ctx:{}, name:{}", rc, path, ctx, name);
+            log.info("masterCreateCallBack收到异步回调，rc:{}, path:{}, ctx:{}, name:{}", rc, path, ctx, name);
             switch (KeeperException.Code.get(rc)){
                 case CONNECTIONLOSS:
                     try{
@@ -54,10 +71,12 @@ public class AsyncMaster implements Watcher {
         }
     };
 
+    // 主节点检测异步回调
     private AsyncCallback.DataCallback masterCheckCallBack = new AsyncCallback.DataCallback() {
         @Override
         public void processResult(int rc, String path, Object ctx, byte[] data, Stat stat) {
-            log.info("收到异步回调，rc:{}, path:{}, ctx:{}, data:{}, stat:{}", rc, path, ctx, data, stat);
+            log.info("masterCheckCallBack收到异步回调，rc:{}, path:{}, ctx:{}, data:{}, stat:{}", rc, path, ctx, data,
+                    stat);
             switch (KeeperException.Code.get(rc)){
                 case CONNECTIONLOSS:
                     try{
@@ -77,10 +96,7 @@ public class AsyncMaster implements Watcher {
         }
     };
 
-    public boolean isLeader() {
-        return isLeader;
-    }
-
+    // 异步 Watcher 构造函数
     public AsyncMaster(String hostPort){
         this.hostPort = hostPort;
     }
@@ -91,7 +107,7 @@ public class AsyncMaster implements Watcher {
         log.info("Master.process");
     }
 
-
+    // 启动连接
     protected void startZK(){
         try {
             zk = new ZooKeeper(hostPort, 15000, this);
@@ -102,6 +118,7 @@ public class AsyncMaster implements Watcher {
     }
 
 
+    // 关闭连接
     protected void closeZK(){
         try{
             this.zk.close();
@@ -110,9 +127,7 @@ public class AsyncMaster implements Watcher {
         }
     }
 
-
-    String serverId = Integer.toHexString(new Random().nextInt());
-
+    // 创建主节点，成为主节点
     protected void runForMaster() throws InterruptedException{
         zk.create(MASTER_NODE,
                 serverId.getBytes(),
@@ -120,11 +135,52 @@ public class AsyncMaster implements Watcher {
                 CreateMode.EPHEMERAL,
                 masterCreateCallBack,
                 null);
+        bootstrap();
     }
 
+    // 检测主节点
     private void checkMaster() throws InterruptedException{
         zk.getData(MASTER_NODE, false, masterCheckCallBack, null);
     }
+
+    // 创建主从模式需要的根目录
+    public void bootstrap(){
+        createParent("/workers", new byte[0]);
+        createParent("/assign", new byte[0]);
+        createParent("/tasks", new byte[0]);
+        createParent("/status", new byte[0]);
+    }
+
+    // 创建目录
+    void createParent(String path, byte[] data){
+        zk.create(path, data,
+                ZooDefs.Ids.OPEN_ACL_UNSAFE,
+                CreateMode.PERSISTENT,
+                createParentCallBack,
+                data);
+    }
+
+    // 创建目录结构异步回调
+    AsyncCallback.StringCallback createParentCallBack = new AsyncCallback.StringCallback() {
+        @Override
+        public void processResult(int rc, String path, Object ctx, String name) {
+            log.info("createParentCallBack收到异步回调，rc:{}, path:{}, ctx:{}, name:{}", rc, path, ctx, name);
+            switch (KeeperException.Code.get(rc)){
+                case CONNECTIONLOSS:
+                    createParent(path, (byte[]) ctx);
+                    break;
+                case OK:
+                    log.info("Parent created, path:{}", path);
+                    break;
+                case NODEEXISTS:
+                    log.warn("Parent already registered, path:{}", path);
+                    break;
+                default:
+                    log.error("Something went wrong, e:{}, path:{}", KeeperException.create(KeeperException.Code.get(rc)
+                    ), path);
+            }
+        }
+    };
 
     public static void main(String[] args) throws InterruptedException{
         BasicConfigurator.configure();
