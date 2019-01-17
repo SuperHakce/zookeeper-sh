@@ -9,6 +9,7 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooDefs;
 import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.data.Stat;
 
 import java.io.IOException;
 import java.util.Random;
@@ -30,6 +31,29 @@ public class AsyncWorker implements Watcher{
 
     // 客户端唯一ID
     private String serverId = Integer.toHexString(new Random().nextInt());
+
+    // 节点状态
+    private String status;
+
+    // 节点名称
+    private String name;
+
+    public String getServerId() {
+        return serverId;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+        updateStatus(status);
+    }
+
+    public String getName() {
+        return name;
+    }
 
     // 异步 Watcher 构造函数
     public AsyncWorker(String hostPort){
@@ -59,9 +83,10 @@ public class AsyncWorker implements Watcher{
                 CreateMode.EPHEMERAL,
                 createWorkerCallBack,
                 null);
+        name = "worker-" + serverId;
     }
 
-    // // 从节点创建异步回调
+    // 从节点创建异步回调
     AsyncCallback.StringCallback createWorkerCallBack = new AsyncCallback.StringCallback() {
         @Override
         public void processResult(int rc, String path, Object ctx, String name) {
@@ -92,11 +117,37 @@ public class AsyncWorker implements Watcher{
         }
     }
 
+
+    // 更新状异步态回调
+    AsyncCallback.StatCallback statusUpdateCallBack = new AsyncCallback.StatCallback() {
+        @Override
+        public void processResult(int rc, String path, Object ctx, Stat stat) {
+            log.info("statusUpdateCallBack收到异步回调，rc:{}, path:{}, ctx:{}, stat:{}", rc, path, ctx, stat);
+            switch (KeeperException.Code.get(rc)){
+                case CONNECTIONLOSS:
+                    updateStatus(ctx.toString());
+                    return;
+            }
+        }
+    };
+
+    // 竞态条件更新状态
+    synchronized private void updateStatus(String status){
+        if(status == this.status){
+            zk.setData("/workers/" + name,
+                    status.getBytes(),
+                    -1,
+                    statusUpdateCallBack,
+                    status);
+        }
+    }
+
     public static void main(String[] args) throws InterruptedException{
         BasicConfigurator.configure();
         AsyncWorker asyncWorker = new AsyncWorker("58.87.111.245:2181");
         asyncWorker.startZK();
         asyncWorker.register();
+        asyncWorker.setStatus("heqingjiang");
         Thread.sleep(6000000L);
     }
 
